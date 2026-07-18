@@ -1,11 +1,21 @@
-# Minimal requirements for Streamlit Community Cloud. lightgbm/psycopg2-style
-# native-dependency lessons learned from the MarketPulse deployment: pin
-# past known-broken combinations, and see packages.txt for the matching
-# apt-level dependency (libgomp1) lightgbm needs at runtime.
+# Minimal requirements for Streamlit Community Cloud.
+#
+# pandas==2.2.2/pyarrow==16.1.0/numpy==1.26.4 (the versions matching local
+# dev and the Lambda layer) have no prebuilt wheels for Streamlit Cloud's
+# Python 3.14 runtime, forcing a from-source build with no compiler
+# available - the exact class of bug MarketPulse hit with psycopg2/numpy on
+# an older Python. Bumped to versions verified (in a python:3.14-slim
+# container matching Streamlit Cloud) to install cleanly AND produce
+# correct results against this repo's actual model/holdout artifacts -
+# pandas 3.0 in particular is a major version bump from what's used
+# elsewhere in the project (local dev, the Lambda layer), so this pin is
+# deliberately scoped to the dashboard only; SageMaker training and
+# bid_consumer keep the older, Python-3.11/3.12-compatible pins since nothing
+# forces them onto 3.14.
 streamlit==1.59.2
-plotly==5.22.0
-pandas==2.2.2
-pyarrow==16.1.0
-numpy==1.26.4
-lightgbm==4.5.0
-boto3==1.34.144
+plotly==6.9.0
+pandas==3.0.3
+pyarrow==24.0.0
+numpy==2.5.1
+lightgbm==4.7.0
+boto3==1.43.51
