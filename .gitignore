@@ -1,0 +1,21 @@
+.venv/
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+*.egg-info/
+
+# Terraform - .terraform.lock.hcl IS committed (pins provider versions),
+# everything else here is either local cache or holds real secrets
+# (tfstate contains the streamlit_readonly IAM access key in plaintext)
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/build/
+
+# Built model artifacts stay committed (they're the point - a pretrained
+# model the deployed app reads without ever touching AWS/HF at runtime),
+# but local training scratch shouldn't be
+model/__pycache__/

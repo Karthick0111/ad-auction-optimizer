@@ -1,0 +1,14 @@
+{
+  "lightgbm": {
+    "auc": 0.7597352931688931,
+    "logloss": 0.47676220888118986,
+    "best_iteration": 78
+  },
+  "logistic_regression_baseline": {
+    "auc": 0.743656107396401,
+    "logloss": 0.5029084271532029
+  },
+  "n_train": 160000,
+  "n_holdout": 40000,
+  "click_rate": 0.24994
+}

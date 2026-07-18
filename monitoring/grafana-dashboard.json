@@ -1,0 +1,196 @@
+{
+  "title": "Ad Auction Optimizer - Pipeline Health",
+  "description": "CloudWatch metrics for the Kinesis -> Lambda -> DynamoDB simulation pipeline. Import into Grafana Cloud (Dashboards -> Import -> paste JSON) and select your CloudWatch data source when prompted. Not meant to run continuously - check it during/after a demo run, there's nothing to watch between sessions.",
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_CLOUDWATCH",
+        "type": "datasource",
+        "query": "cloudwatch",
+        "label": "CloudWatch data source"
+      },
+      {
+        "name": "region",
+        "type": "textbox",
+        "label": "AWS region",
+        "query": "us-east-1",
+        "current": { "value": "us-east-1", "text": "us-east-1" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kinesis: incoming records",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/Kinesis",
+          "metricName": "IncomingRecords",
+          "dimensions": { "StreamName": "ad-auction-optimizer-bid-requests" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Kinesis: consumer lag (iterator age)",
+      "type": "timeseries",
+      "description": "How far behind the bid_consumer Lambda is from the head of the stream. Should stay near zero - a rising trend means events are backing up.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/Kinesis",
+          "metricName": "GetRecords.IteratorAgeMilliseconds",
+          "dimensions": { "StreamName": "ad-auction-optimizer-bid-requests" },
+          "statistic": "Maximum",
+          "region": "$region",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Lambda invocations",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Invocations",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "A"
+        },
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Invocations",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-producer" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "B"
+        },
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Invocations",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-run-trigger" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Lambda errors",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "A"
+        },
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-producer" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "B"
+        },
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-run-trigger" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Lambda p50/p99 duration - bid_consumer",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Duration",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
+          "statistic": "p50",
+          "region": "$region",
+          "refId": "A"
+        },
+        {
+          "namespace": "AWS/Lambda",
+          "metricName": "Duration",
+          "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
+          "statistic": "p99",
+          "region": "$region",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "DynamoDB consumed capacity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/DynamoDB",
+          "metricName": "ConsumedWriteCapacityUnits",
+          "dimensions": { "TableName": "ad-auction-optimizer-simulation-events" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "A"
+        },
+        {
+          "namespace": "AWS/DynamoDB",
+          "metricName": "ConsumedReadCapacityUnits",
+          "dimensions": { "TableName": "ad-auction-optimizer-simulation-events" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "DynamoDB throttled requests",
+      "type": "timeseries",
+      "description": "Should stay at zero on-demand billing mode. Non-zero means the pipeline is hitting a burst limit.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
+      "targets": [
+        {
+          "namespace": "AWS/DynamoDB",
+          "metricName": "ThrottledRequests",
+          "dimensions": { "TableName": "ad-auction-optimizer-bandit-state" },
+          "statistic": "Sum",
+          "region": "$region",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
