@@ -56,10 +56,35 @@ resource "aws_lambda_layer_version" "shared_code" {
   compatible_runtimes = [local.runtime]
 }
 
+# ml_deps_layer.zip (~67MB) is over the ~70MB hard limit for direct
+# PublishLayerVersion uploads, so it has to go through S3 instead - the
+# standard route for any Lambda package/layer past that size, using the
+# same artifacts bucket the rest of the project already uses.
+#
+# etag is deliberately NOT set to filemd5(...): S3 uses multipart upload
+# for a file this size, which produces a hash-of-part-hashes ETag (e.g.
+# "...-14"), never a plain file MD5 - so a filemd5() comparison would never
+# match and would force a pointless re-upload + a cascading Lambda layer
+# replacement on every single `terraform apply`, even with no real change.
+# Ignoring etag means re-running ./infra/build_layers.sh with genuinely new
+# dependencies won't auto-trigger a re-upload - `terraform taint
+# aws_s3_object.ml_deps_layer` (or delete build/ml_deps_layer.zip and
+# rebuild) forces one when that's actually needed.
+resource "aws_s3_object" "ml_deps_layer" {
+  bucket = aws_s3_bucket.artifacts.bucket
+  key    = "lambda-layers/ml_deps_layer.zip"
+  source = "${local.build_dir}/ml_deps_layer.zip"
+
+  lifecycle {
+    ignore_changes = [etag]
+  }
+}
+
 resource "aws_lambda_layer_version" "ml_deps" {
   layer_name          = "${var.project_name}-ml-deps"
-  filename            = "${local.build_dir}/ml_deps_layer.zip"
-  source_code_hash    = filebase64sha256("${local.build_dir}/ml_deps_layer.zip")
+  s3_bucket           = aws_s3_object.ml_deps_layer.bucket
+  s3_key              = aws_s3_object.ml_deps_layer.key
+  s3_object_version   = aws_s3_object.ml_deps_layer.version_id
   compatible_runtimes = [local.runtime]
 }
 

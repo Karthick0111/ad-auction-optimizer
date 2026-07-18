@@ -1,15 +1,25 @@
 #!/bin/bash
-# Runs inside the Lambda Python 3.11 base image (Amazon Linux 2). numpy is
-# pinned explicitly and installed in its own step before lightgbm - numpy's
-# newest releases have dropped manylinux2014 wheel support (AL2's old
-# glibc can't use them), so installing it first and separately forces pip
-# to resolve a compatible 1.x wheel rather than letting a transitive
-# resolution pull in a numpy version with no wheel for this environment.
+# Runs inside the Lambda Python base image (Amazon Linux 2023).
+#
+# numpy and scipy are pinned to versions known to work together (1.26.4 /
+# 1.13.1 - the same pair used in requirements.txt/local dev) and installed
+# in a SINGLE pip invocation. This matters more than it looks: `pip install
+# --target DIR` does not treat DIR as an already-satisfied environment
+# across separate invocations - each `pip install --target` call resolves
+# dependencies from scratch, blind to whatever's already sitting in DIR
+# from a previous call. Installing numpy in one call and scipy in a later,
+# separate call let scipy's own unconstrained numpy dependency silently
+# fetch a second, different numpy version into the same directory
+# alongside the first - both installs "succeeded", pip never complained,
+# and the breakage only surfaced as an AttributeError at Lambda runtime
+# when whichever numpy's files happened to win the file-overwrite race
+# didn't match what scipy was compiled against. Lambda deps are installed
+# separately via --no-deps specifically because ITS dependency spec has no
+# upper bound on numpy and would happily reintroduce the same problem.
 set -euo pipefail
 microdnf install -y libgomp
-pip install -q --target /build/ml_deps/python "numpy==1.26.4"
+pip install -q --target /build/ml_deps/python "numpy==1.26.4" "scipy==1.13.1"
 pip install -q --target /build/ml_deps/python --no-deps lightgbm==4.5.0
-pip install -q --target /build/ml_deps/python scipy
 mkdir -p /build/ml_deps/python/lib
 cp /usr/lib64/libgomp.so.1 /build/ml_deps/python/lib/
 python3 /build_scripts/zip_helper.py /build/ml_deps/python /build/ml_deps_layer.zip

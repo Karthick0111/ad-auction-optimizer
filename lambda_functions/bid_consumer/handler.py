@@ -68,6 +68,18 @@ def _dec(x) -> Decimal:
     return Decimal(str(x))
 
 
+def _bandit_state_from_ddb(arm_state: dict) -> dict:
+    """DynamoDB's boto3 resource API returns every number as a Decimal, not
+    a float - ThompsonSamplingBandit's internals (random.gauss mixing a
+    Decimal mean with a float sigma) raise a TypeError on Decimal + float,
+    so state read back from DynamoDB has to be converted to native
+    int/float before going anywhere near the bandit."""
+    return {
+        mult: {"n": int(stats["n"]), "mean": float(stats["mean"]), "m2": float(stats["m2"])}
+        for mult, stats in arm_state.items()
+    }
+
+
 def _mark_completed(runs_table, run_id: str) -> None:
     runs_table.update_item(
         Key={"run_id": run_id},
@@ -107,7 +119,7 @@ def handler(event, context):
             _mark_completed(runs_table, run_id)
             continue
 
-        bandit = ThompsonSamplingBandit.from_state(bandit_item["arm_state"])
+        bandit = ThompsonSamplingBandit.from_state(_bandit_state_from_ddb(bandit_item["arm_state"]))
         config = run["config"]
         value_per_click = float(config["value_per_click"])
         n_competitors = int(config["n_competitors"])
