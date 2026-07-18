@@ -133,17 +133,25 @@ python -m model.train_ctr_model
 # 2. Build the Lambda dependency layer (Docker required)
 ./infra/build_layers.sh
 
-# 3. Provision AWS infrastructure
-cd infra
-terraform init
-terraform apply -target=aws_s3_bucket.artifacts   # bucket first...
+# 3. Provision AWS infrastructure (one apply - Terraform only needs the S3
+#    bucket resource to exist to wire up the Lambda env vars, not the
+#    objects inside it)
+cd infra && terraform init && terraform apply
 cd ..
-aws s3 sync model/ "s3://$(terraform -chdir=infra output -raw s3_bucket)/models/latest/" --exclude "*" --include "ctr_model.txt" --include "category_mappings.json" --include "holdout.jsonl"
-./infra/package_training_code.sh "$(terraform -chdir=infra output -raw s3_bucket)"
-cd infra && terraform apply                        # ...then everything else
 
-# 4. Tear down between demo sessions (avoids any standing cost)
-terraform destroy
+# 4. Upload the already-trained model + package the SageMaker training
+#    entrypoint (only needed again if you retrain via Step Functions)
+aws s3 cp model/ctr_model.txt "s3://$(terraform -chdir=infra output -raw s3_bucket)/models/latest/ctr_model.txt"
+aws s3 cp model/category_mappings.json "s3://$(terraform -chdir=infra output -raw s3_bucket)/models/latest/category_mappings.json"
+aws s3 cp model/holdout.jsonl "s3://$(terraform -chdir=infra output -raw s3_bucket)/models/latest/holdout.jsonl"
+./infra/package_training_code.sh "$(terraform -chdir=infra output -raw s3_bucket)"
+
+# 5. Smoke test: trigger a run directly, bypassing the dashboard
+aws lambda invoke --function-name "$(terraform -chdir=infra output -raw run_trigger_function_name)" \
+  --payload '{"budget": 100, "value_per_click": 2.0, "n_impressions": 200}' --cli-binary-format raw-in-base64-out /tmp/out.json && cat /tmp/out.json
+
+# 6. Tear down between demo sessions (avoids any standing cost)
+cd infra && terraform destroy
 ```
 
 Then deploy `dashboard/app.py` to Streamlit Community Cloud, pointing its
