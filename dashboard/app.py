@@ -22,6 +22,7 @@ import lightgbm as lgb
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from botocore.exceptions import ClientError
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -140,14 +141,29 @@ def ctr_model_view():
     st.plotly_chart(fig3, use_container_width=True)
 
 
-def _invoke_run_trigger(session, config: dict) -> str:
+def _invoke_run_trigger(session, config: dict) -> str | None:
+    # Streamlit's default exception handler redacts the actual message from
+    # any uncaught exception (both in the UI and in "Manage app" logs, since
+    # botocore error messages can contain account IDs/ARNs) - so a bare
+    # ClientError here is a dead end to debug. Catching it explicitly and
+    # showing st.error(...) directly is the only way to actually see what
+    # AWS said went wrong.
     client = session.client("lambda")
-    response = client.invoke(
-        FunctionName=_secret("RUN_TRIGGER_FUNCTION_NAME", "ad-auction-optimizer-run-trigger"),
-        InvocationType="RequestResponse",
-        Payload=json.dumps(config),
-    )
+    function_name = _secret("RUN_TRIGGER_FUNCTION_NAME", "ad-auction-optimizer-run-trigger")
+    try:
+        response = client.invoke(
+            FunctionName=function_name,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(config),
+        )
+    except ClientError as exc:
+        st.error(f"Lambda invoke failed ({exc.response['Error']['Code']}): {exc.response['Error']['Message']}")
+        return None
+
     payload = json.loads(response["Payload"].read())
+    if response.get("FunctionError"):
+        st.error(f"run_trigger raised an error: {payload}")
+        return None
     return json.loads(payload["body"])["run_id"]
 
 
@@ -182,7 +198,8 @@ def auction_simulation_view():
                 "n_impressions": n_impressions,
                 "seed": seed,
             })
-        st.session_state["run_id"] = run_id
+        if run_id:
+            st.session_state["run_id"] = run_id
 
     run_id = st.session_state.get("run_id")
     if not run_id:
