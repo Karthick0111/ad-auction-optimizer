@@ -2,24 +2,25 @@
 
 _Real-time bidding, powered by AWS_
 
+**[Live dashboard →](https://ad-auction-optimizer-gmdqwa5ywh9pljqi7t7buw.streamlit.app)**
+
 A Thompson Sampling bandit learns the best bid multiplier under a budget
 constraint, bidding into a simulated second-price auction driven by a
-LightGBM CTR model trained on real Criteo ad-click data. The "real-time"
-part is genuine, not simulated-in-name-only: historical impressions are
-replayed onto a Kinesis stream and scored live by a Lambda consumer, not
-looped over in a plain Python script.
+LightGBM CTR model trained on real Criteo ad-click data. Historical
+impressions are replayed onto a Kinesis stream and scored live by a Lambda
+consumer, then settled and persisted to DynamoDB — the "real-time" part is
+genuine, not a Python loop dressed up to look like one.
 
 ## What this demonstrates
 
-- **Event-driven architecture, not batch** — Kinesis → Lambda → DynamoDB.
-  This is [MarketPulse](https://github.com/Karthick0111/market-data-platform)'s
-  sibling project, built deliberately differently: that one is a scheduled
-  batch pipeline (Airflow/dbt), this one is a real-time event stream. Two
-  different orchestration paradigms, on purpose.
-- **A real ML model, not a toy one** — LightGBM trained on 200k rows of the
+- **Event-driven architecture, not batch** — Kinesis → Lambda → DynamoDB. A
+  single Lambda invocation, triggered directly off the stream, handles a
+  full score → decide → settle → persist cycle per impression.
+- **A real ML model, not a toy one** — LightGBM trained on 160k rows of the
   actual Criteo Kaggle Display Advertising Challenge dataset, benchmarked
   against a logistic-regression baseline (hashed categoricals, the same
-  trick production CTR systems use at real scale).
+  trick production CTR systems use at real scale). AUC 0.760 vs. 0.744
+  baseline on a 40k-row holdout.
 - **Sequential decision-making under uncertainty** — a Thompson Sampling
   multi-armed bandit picks the bid multiplier, learning online from auction
   outcomes rather than using a fixed heuristic. Tracked against the
@@ -37,53 +38,43 @@ looped over in a plain Python script.
   dtype-mixing quirk in `.iterrows()` mangled category values on their way
   to JSON), which would have quietly degraded every prediction without
   ever raising an error. Caught by re-deriving AUC/LogLoss through the
-  exact inference code path and diffing against training metrics - see
+  exact inference code path and diffing against training metrics — see
   `model/train_ctr_model.py`'s comments for the specifics.
 
 ## Architecture
 
-```
-                    Offline / training path
-  Hugging Face -> data/prepare_data.py -> S3 (raw/processed)
-  (Criteo_x1)                                |
-                                              v
-                                    Step Functions state machine
-                                              |
-                                              v
-                                    SageMaker Training Job
-                                    (LightGBM CTR model)
-                                              |
-                                              v
-                                    S3 (model + category mappings)
+```mermaid
+flowchart LR
+    subgraph Training["Offline training path"]
+        HF[Hugging Face<br/>Criteo_x1] --> PREP[data/prepare_data.py]
+        PREP --> S3RAW[(S3<br/>raw/processed)]
+        S3RAW --> SFN[Step Functions<br/>state machine]
+        SFN --> SM[SageMaker<br/>Training Job]
+        SM --> S3MODEL[(S3<br/>model + category mappings)]
+    end
 
-                    Real-time bidding simulation path
-  Streamlit -> run_trigger Lambda -> DynamoDB (init run/budget)
-  (start run)         |
-                       v
-              producer Lambda -> Kinesis Data Stream
-              (replays holdout    (on-demand, partition
-               impressions)        key = run_id)
-                                        |
-                                        v
-                             bid_consumer Lambda (Kinesis-triggered):
-                             score CTR (S3 model) -> bandit picks arm
-                             (DynamoDB bandit_state) -> simulate
-                             competitor bids -> settle 2nd-price
-                             auction -> check budget -> write result
-                                        |
-                                        v
-                             DynamoDB (simulation_events,
-                             simulation_runs, bandit_state)
-                                        |
-                                        v
-                             Streamlit dashboard polls DynamoDB
-                             (read-only IAM credentials as a secret)
+    subgraph Realtime["Real-time bidding simulation"]
+        ST[Streamlit<br/>start run] --> RT[run_trigger Lambda]
+        RT --> DDB1[(DynamoDB<br/>init run/budget)]
+        RT --> PROD[producer Lambda]
+        PROD --> KIN[Kinesis Data Stream<br/>on-demand, key=run_id]
+        KIN --> BC[bid_consumer Lambda<br/>score CTR, bandit picks arm,<br/>settle 2nd-price auction]
+        S3MODEL -.model.-> BC
+        BC --> DDB2[(DynamoDB<br/>events, runs, bandit_state)]
+        DDB2 --> DASH[Streamlit dashboard]
+    end
 
-  CloudWatch metrics (Kinesis/Lambda/DynamoDB) -> Grafana Cloud -> pipeline health dashboard
+    subgraph Observability
+        CW[CloudWatch metrics<br/>Kinesis/Lambda/DynamoDB] --> GRAF[Grafana Cloud<br/>pipeline health]
+    end
+
+    KIN -. metrics .-> CW
+    BC -. metrics .-> CW
+    DDB2 -. metrics .-> CW
 ```
 
 Kinesis's partition key is `run_id`, so every event for one simulation run
-lands on the same shard in order - a single Lambda invocation processes
+lands on the same shard in order — a single Lambda invocation processes
 them sequentially, which is what keeps the per-run bandit state's
 read-modify-write safe without needing distributed locking.
 
@@ -91,6 +82,36 @@ read-modify-write safe without needing distributed locking.
 
 Python · AWS Lambda · Kinesis · DynamoDB · S3 · Step Functions · SageMaker ·
 Terraform · LightGBM · Streamlit · Grafana Cloud
+
+## Model & bidding approach
+
+- **CTR model**: LightGBM with native categorical support, benchmarked
+  against a hashed-feature logistic regression baseline — trained on 160k
+  rows of Criteo data, evaluated on a 40k-row holdout (AUC 0.7597 vs. 0.7437
+  baseline, LogLoss 0.4768 vs. 0.5029).
+- **Bid decision**: Thompson Sampling over a small set of bid multipliers,
+  tracked via Welford's online mean/variance per arm — each auction outcome
+  updates the belief distribution live, no offline retraining loop needed to
+  adapt within a run.
+- **Auction settlement**: standard second-price (Vickrey) rules — highest
+  bid wins, pays the second-highest bid (or nothing, if there are no
+  competitors that impression).
+
+## Why this project
+
+Ad-tech and analytics-adjacent interviews ask about bid optimization, CTR
+prediction, and auction mechanics as first-class topics — most portfolio
+answers to that are a static notebook. This one is a live system: a Kinesis
+stream that's actually streaming, a Lambda that's actually invoked per
+event, and a bandit that's actually updating its beliefs against real
+infrastructure, not a for-loop pretending to be one.
+
+The emphasis isn't the dashboard — it's the plumbing underneath it: an
+event-driven pipeline where one invocation does score → decide → settle →
+persist per impression, a cost model that keeps standing cost near zero
+between demo sessions without faking the "real AWS" part, and a bandit
+whose online learning is visible on a live chart rather than just asserted
+in a README.
 
 ## Repo structure
 
@@ -166,35 +187,34 @@ infrastructure during a demo run rather than the simulation results.
 
 1. Sign up for a [Grafana Cloud](https://grafana.com/products/cloud/) free
    tier account (skip if you already have one).
-2. In your stack, add a CloudWatch data source (**Connections -> Add new
-   connection -> Amazon CloudWatch**) using the **Access & secret key** auth
+2. In your stack, add a CloudWatch data source (**Connections → Add new
+   connection → Amazon CloudWatch**) using the **Access & secret key** auth
    method and the `grafana_cloudwatch_readonly` IAM credentials from
    `terraform output grafana_cloudwatch_readonly_access_key_id` /
    `terraform output -raw grafana_cloudwatch_readonly_secret_access_key`,
    region `us-east-1`.
-3. **Dashboards -> New -> Import**, paste the contents of
+3. **Dashboards → New → Import**, paste the contents of
    `monitoring/grafana-dashboard.json`, and select the CloudWatch data
-   source you just created when prompted.
+   source when prompted.
 
 Not meant to run continuously - check it during/after a simulation run,
 there's nothing to watch between sessions.
 
-## Known limitations / what a production version would add next
+## What I'd change for a real production deployment
 
-- The SageMaker training path uses the built-in scikit-learn container in
-  script mode (installs `lightgbm` via `requirements.txt` at container
-  start) rather than a custom container image - faster to stand up, but a
-  real production pipeline would bake a purpose-built image instead.
-- No API Gateway in front of `run_trigger` - the dashboard invokes it
-  directly via `boto3` with IAM credentials rather than a public HTTP API.
-  Fine for a single-operator demo; a real multi-user product would need
-  proper request auth in front of it.
-- The Grafana Cloud dashboard isn't meant to run continuously - there's
-  nothing to watch between demo sessions since the whole point of the
-  on-demand/no-endpoint design is near-zero standing cost. Check it
-  during/after a run, not as an always-on monitor.
-- `bandit_state` uses a simple read-modify-write per event rather than
-  DynamoDB conditional writes - safe in practice because Kinesis's
+- Bake a custom SageMaker training container instead of the built-in
+  scikit-learn container in script mode (installs `lightgbm` via
+  `requirements.txt` at container start) - faster to stand up, but a real
+  production pipeline would bake a purpose-built image instead.
+- Put API Gateway (with real request auth) in front of `run_trigger`
+  instead of the dashboard invoking it directly via `boto3` with IAM
+  credentials - fine for a single-operator demo, not for a multi-user
+  product.
+- Replace `bandit_state`'s simple read-modify-write per event with
+  DynamoDB conditional writes - safe today because Kinesis's
   partition-key-per-run_id guarantees one shard (and therefore effectively
   one active writer) per run, but a genuinely multi-writer design would
   need optimistic locking.
+- Swap the Grafana Cloud dashboard's on-demand/no-endpoint cost model for
+  an always-on monitoring stack once there's a production SLA to actually
+  watch continuously.
