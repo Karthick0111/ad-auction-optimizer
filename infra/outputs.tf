@@ -35,3 +35,13 @@ output "streamlit_readonly_secret_access_key" {
   value     = aws_iam_access_key.streamlit_readonly.secret
   sensitive = true
 }
+
+output "grafana_cloudwatch_readonly_access_key_id" {
+  value     = aws_iam_access_key.grafana_cloudwatch_readonly.id
+  sensitive = true
+}
+
+output "grafana_cloudwatch_readonly_secret_access_key" {
+  value     = aws_iam_access_key.grafana_cloudwatch_readonly.secret
+  sensitive = true
+}

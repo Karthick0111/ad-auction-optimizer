@@ -1,18 +1,30 @@
 {
   "title": "Ad Auction Optimizer - Pipeline Health",
-  "description": "CloudWatch metrics for the Kinesis -> Lambda -> DynamoDB simulation pipeline. Import into Grafana Cloud (Dashboards -> Import -> paste JSON) and select your CloudWatch data source when prompted. Not meant to run continuously - check it during/after a demo run, there's nothing to watch between sessions.",
+  "description": "CloudWatch metrics for the Kinesis -> Lambda -> DynamoDB simulation pipeline. Import into Grafana Cloud (Dashboards -> Import -> paste JSON) - the CloudWatch data source picker shown at import time fills in every panel automatically. Not meant to run continuously - check it during/after a demo run, there's nothing to watch between sessions.",
   "schemaVersion": 39,
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "30s",
+  "__inputs": [
+    {
+      "name": "DS_CLOUDWATCH",
+      "label": "CloudWatch data source",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "cloudwatch",
+      "pluginName": "CloudWatch"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "datasource",
+      "id": "cloudwatch",
+      "name": "CloudWatch",
+      "version": "1.0.0"
+    }
+  ],
   "templating": {
     "list": [
-      {
-        "name": "DS_CLOUDWATCH",
-        "type": "datasource",
-        "query": "cloudwatch",
-        "label": "CloudWatch data source"
-      },
       {
         "name": "region",
         "type": "textbox",
@@ -31,6 +43,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Kinesis",
           "metricName": "IncomingRecords",
           "dimensions": { "StreamName": "ad-auction-optimizer-bid-requests" },
@@ -49,6 +62,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Kinesis",
           "metricName": "GetRecords.IteratorAgeMilliseconds",
           "dimensions": { "StreamName": "ad-auction-optimizer-bid-requests" },
@@ -66,6 +80,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Invocations",
           "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
@@ -74,6 +89,7 @@
           "refId": "A"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Invocations",
           "dimensions": { "FunctionName": "ad-auction-optimizer-producer" },
@@ -82,6 +98,7 @@
           "refId": "B"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Invocations",
           "dimensions": { "FunctionName": "ad-auction-optimizer-run-trigger" },
@@ -99,6 +116,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Errors",
           "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
@@ -107,6 +125,7 @@
           "refId": "A"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Errors",
           "dimensions": { "FunctionName": "ad-auction-optimizer-producer" },
@@ -115,6 +134,7 @@
           "refId": "B"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Errors",
           "dimensions": { "FunctionName": "ad-auction-optimizer-run-trigger" },
@@ -132,6 +152,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Duration",
           "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
@@ -140,6 +161,7 @@
           "refId": "A"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/Lambda",
           "metricName": "Duration",
           "dimensions": { "FunctionName": "ad-auction-optimizer-bid-consumer" },
@@ -157,6 +179,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/DynamoDB",
           "metricName": "ConsumedWriteCapacityUnits",
           "dimensions": { "TableName": "ad-auction-optimizer-simulation-events" },
@@ -165,6 +188,7 @@
           "refId": "A"
         },
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/DynamoDB",
           "metricName": "ConsumedReadCapacityUnits",
           "dimensions": { "TableName": "ad-auction-optimizer-simulation-events" },
@@ -183,6 +207,7 @@
       "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
       "targets": [
         {
+          "datasource": { "type": "cloudwatch", "uid": "${DS_CLOUDWATCH}" },
           "namespace": "AWS/DynamoDB",
           "metricName": "ThrottledRequests",
           "dimensions": { "TableName": "ad-auction-optimizer-bandit-state" },

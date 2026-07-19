@@ -158,6 +158,27 @@ Then deploy `dashboard/app.py` to Streamlit Community Cloud, pointing its
 secrets at the `streamlit_readonly` IAM credentials from `terraform output`
 plus the DynamoDB table names / Lambda function name from the same output.
 
+### Grafana Cloud (pipeline observability)
+
+Separate from the Streamlit dashboard: a read-only view of the AWS pipeline
+itself (Kinesis/Lambda/DynamoDB CloudWatch metrics), for watching the
+infrastructure during a demo run rather than the simulation results.
+
+1. Sign up for a [Grafana Cloud](https://grafana.com/products/cloud/) free
+   tier account (skip if you already have one).
+2. In your stack, add a CloudWatch data source (**Connections -> Add new
+   connection -> Amazon CloudWatch**) using the **Access & secret key** auth
+   method and the `grafana_cloudwatch_readonly` IAM credentials from
+   `terraform output grafana_cloudwatch_readonly_access_key_id` /
+   `terraform output -raw grafana_cloudwatch_readonly_secret_access_key`,
+   region `us-east-1`.
+3. **Dashboards -> New -> Import**, paste the contents of
+   `monitoring/grafana-dashboard.json`, and select the CloudWatch data
+   source you just created when prompted.
+
+Not meant to run continuously - check it during/after a simulation run,
+there's nothing to watch between sessions.
+
 ## Known limitations / what a production version would add next
 
 - The SageMaker training path uses the built-in scikit-learn container in

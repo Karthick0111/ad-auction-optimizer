@@ -243,3 +243,38 @@ resource "aws_iam_user_policy" "streamlit_readonly" {
     ]
   })
 }
+
+# --- Grafana Cloud's read-only CloudWatch credentials (pipeline observability,
+# separate from the Streamlit dashboard) ---
+
+resource "aws_iam_user" "grafana_cloudwatch_readonly" {
+  name = "${var.project_name}-grafana-cloudwatch-readonly"
+}
+
+resource "aws_iam_access_key" "grafana_cloudwatch_readonly" {
+  user = aws_iam_user.grafana_cloudwatch_readonly.name
+}
+
+resource "aws_iam_user_policy" "grafana_cloudwatch_readonly" {
+  name = "${var.project_name}-grafana-cloudwatch-readonly-policy"
+  user = aws_iam_user.grafana_cloudwatch_readonly.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # CloudWatch's read APIs don't support resource-level ARN scoping -
+        # least privilege here is enforced at the action level (metrics
+        # read-only, no logs, no alarm/dashboard write) rather than Resource.
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:ListMetrics",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:DescribeAlarmsForMetric",
+          "tag:GetResources",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+}
